@@ -39,6 +39,7 @@ npm run deploy
 
 The app will be available at https://<username>.github.io/<repo-name>/ after deploying.
 Make sure vite.config.ts has base: '/<repo-name>/' so assets load correctly.
+```
 
 ## License
 
