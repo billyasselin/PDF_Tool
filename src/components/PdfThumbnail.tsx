@@ -5,84 +5,86 @@ import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 type Props = {
-    file: File;
+  file: File;
+  pageNumber?: number; // default to first page
 };
 
-export default function PdfThumbnail({ file }: Props) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+export default function PdfThumbnail({ file, pageNumber = 1 }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<any>(null);
 
-    useEffect(() => {
-        async function renderPdf() {
-            if (!canvasRef.current) return;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            const page = await pdf.getPage(1);
-            const viewport = page.getViewport({ scale: 0.4 });
-            const rotatedViewport = viewport.clone({ rotation: page.rotate });
+    let isMounted = true;
 
-            const canvas = canvasRef.current;
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
+    const renderPdf = async () => {
+      if (!canvas || !isMounted) return;
 
-            const context = canvas.getContext("2d");
-            if (!context) return;
+      // Cancel any ongoing render
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+        renderTaskRef.current = null;
+      }
 
-            // set up canvas
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const page = await pdf.getPage(pageNumber);
 
-            // save canvas state
-            context.save();
-            context.clearRect(0, 0, canvas.width, canvas.height);
+        // Use a fixed scale and ignore rotation/metadata
+        const viewport = page.getViewport({ scale: 0.4, rotation: 0 });
 
-            // apply rotation transform based on page.rotate
-            switch (page.rotate) {
-                case 90:
-                    context.translate(canvas.width, 0);
-                    context.rotate((90 * Math.PI) / 180);
-                    break;
-                case 180:
-                    context.translate(canvas.width, canvas.height);
-                    context.rotate((180 * Math.PI) / 180);
-                    break;
-                case 270:
-                    context.translate(0, canvas.height);
-                    context.rotate((270 * Math.PI) / 180);
-                    break;
-                default:
-                    // no rotation
-                    break;
-            }
+        const context = canvas.getContext("2d");
+        if (!context) return;
 
-            // render the page
-            await page.render({
-                canvasContext: context,
-                canvas,
-                viewport, rotatedViewport,
-            }).promise;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        context.clearRect(0, 0, canvas.width, canvas.height);
 
-            // restore canvas state
-            context.restore();
+        renderTaskRef.current = page.render({
+          canvasContext: context,
+          viewport,
+        });
 
+        await renderTaskRef.current.promise;
+        renderTaskRef.current = null;
+      } catch (err) {
+        if (isMounted) console.error("PDF thumbnail render error:", err);
+      }
+    };
 
-            await page.render({
-                canvasContext: context,
-                canvas,
-                viewport,
-            }).promise;
+    // Only render once canvas container has a measurable size
+    const container = canvas.parentElement;
+    if (!container) return;
 
-            // restore canvas state
-            context.restore();
-        }
-
+    const observer = new ResizeObserver(() => {
+      // Render only when container has width/height
+      if (container.clientWidth > 0 && container.clientHeight > 0) {
         renderPdf();
-    }, [file]);
+      }
+    });
 
-    return (
-        <div style={{ width: "120px", textAlign: "center" }}>
-            <canvas ref={canvasRef} style={{ border: "1px solid red" }}></canvas>
-            <p style={{ fontSize: "12px" }}>{file.name}</p>
-        </div>
-    );
+    observer.observe(container);
+
+    return () => {
+      isMounted = false;
+      observer.disconnect();
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+      }
+    };
+  }, [file, pageNumber]);
+
+  return (
+    <div style={{ textAlign: "center" }}>
+      <canvas ref={canvasRef} style={{ border: "2px solid cyan" }} />
+      {/* <p style={{ fontSize: "12px" }}>{file.name}</p> let FileUploader handle*/}
+    </div>
+  );
 }
