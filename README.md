@@ -1,7 +1,7 @@
 # Privacy-First PDF Merger
 
 A **client-side PDF merger** built with **React + TypeScript + Vite**.  
-Everything runs locally in your browser — **no PDFs are uploaded to any server**, so your documents stay private.
+Everything runs locally in your browser **no PDFs are uploaded to any server**, so your documents stay private.
 
 ## Features
 
